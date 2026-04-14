@@ -24,8 +24,13 @@ class TestCustomerCreation:
         with pytest.raises(ValueError, match="Customer name cannot be empty"):
             Customer(id="C001", name="", email="alice@example.com")
 
-    # TODO: Test negative total_spent raises ValueError
-    # TODO: Test negative order_count raises ValueError
+    def test_negative_total_spent_raises_error(self):
+        with pytest.raises(ValueError, match="Total spent cannot be negative"):
+            Customer(id="C001", name="Alice", email="alice@example.com", total_spent=-100)
+
+    def test_negative_order_count_raises_error(self):
+        with pytest.raises(ValueError, match="Order count cannot be negative"):
+            Customer(id="C001", name="Alice", email="alice@example.com", order_count=-1)
 
 
 class TestCustomerTierDiscount:
@@ -42,8 +47,19 @@ class TestCustomerTierDiscount:
         )
         assert customer.tier_discount_percent == 5.0
 
-    # TODO: Add tests for GOLD tier (10%) and PLATINUM tier (15%)
+    def test_gold_tier_discount(self):
+        customer = Customer(
+            id="C001", name="Alice", email="alice@example.com",
+            tier=CustomerTier.GOLD
+        )
+        assert customer.tier_discount_percent == 10.0
 
+    def test_platinum_tier_discount(self):
+        customer = Customer(
+            id="C001", name="Alice", email="alice@example.com",
+            tier=CustomerTier.PLATINUM
+        )
+        assert customer.tier_discount_percent == 15.0
 
 class TestCustomerTierUpdate:
     """Tests for automatic tier upgrades."""
@@ -74,5 +90,48 @@ class TestCustomerTierUpdate:
         with pytest.raises(ValueError, match="Purchase amount must be positive"):
             customer.record_purchase(-50.0)
 
-    # TODO: Add test for tier remaining STANDARD when total_spent < 1000
-    # TODO: Add test for multiple record_purchase calls accumulating correctly
+    def test_tier_update_remaining_standard(self):
+        customer = Customer(id="C001", name="Alice", email="alice@example.com", total_spent=500)
+        customer.update_tier()
+        assert customer.tier == CustomerTier.STANDARD
+
+    def test_multiple_record_purchase_accumulates(self):
+        customer = Customer(id="C001", name="Alice", email="alice@example.com")
+        customer.record_purchase(100.0)
+        customer.record_purchase(200.0)
+        assert customer.total_spent == 300.0
+        assert customer.order_count == 2
+
+
+class TestCustomerRepr:
+    """Tests for customer string representation."""
+
+    def test_repr_standard_customer(self):
+        customer = Customer(id="C001", name="Alice Smith", email="alice@example.com")
+        repr_str = repr(customer)
+        assert "C001" in repr_str
+        assert "Alice Smith" in repr_str
+        assert "standard" in repr_str
+        assert repr_str == "Customer(id='C001', name='Alice Smith', tier=standard)"
+
+    def test_repr_platinum_customer(self):
+        customer = Customer(
+            id="C002", name="Bob Jones", email="bob@example.com",
+            tier=CustomerTier.PLATINUM
+        )
+        repr_str = repr(customer)
+        assert "C002" in repr_str
+        assert "Bob Jones" in repr_str
+        assert "platinum" in repr_str
+
+    def test_repr_contains_id_name_and_tier(self):
+        customer = Customer(
+            id="CUST123", name="Test User", email="test@example.com",
+            tier=CustomerTier.GOLD
+        )
+        repr_str = repr(customer)
+        assert repr_str.startswith("Customer(")
+        assert "id=" in repr_str
+        assert "name=" in repr_str
+        assert "tier=" in repr_str
+

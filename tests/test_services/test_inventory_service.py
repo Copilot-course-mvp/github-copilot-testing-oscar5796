@@ -35,8 +35,23 @@ class TestAddAndGetProduct:
         with pytest.raises(ValueError, match="already exists"):
             inventory.add_product(duplicate)
 
-    # TODO: Add test for list_products returns all products
-    # TODO: Add test for list_available_products excludes out-of-stock items
+    def test_list_products_returns_all(self, inventory, sample_product):
+        inventory.add_product(sample_product)
+        p2 = Product(id="P002", name="Phone", price=499.99, stock=5, category="Electronics")
+        inventory.add_product(p2)
+        products = inventory.list_products()
+        assert len(products) == 2
+        assert sample_product in products
+        assert p2 in products
+
+    def test_list_available_products(self, inventory):
+        p1 = Product(id="P001", name="In Stock", price=10.0, stock=5, category="A")
+        p2 = Product(id="P002", name="Out of Stock", price=20.0, stock=0, category="A")
+        inventory.add_product(p1)
+        inventory.add_product(p2)
+        available = inventory.list_available_products()
+        assert len(available) == 1
+        assert available[0].id == "P001"
 
 
 class TestStockManagement:
@@ -57,9 +72,37 @@ class TestStockManagement:
         inventory.restock_product("P001", 5)
         assert inventory.get_product("P001").stock == 15
 
-    # TODO: Add test for get_low_stock_products with threshold
-    # TODO: Add test for search_by_category (case-insensitive)
-    # TODO: Add test for remove_product
+    def test_get_low_stock_products(self, inventory):
+        p1 = Product(id="P001", name="Low Stock", price=10.0, stock=2, category="A")
+        p2 = Product(id="P002", name="Sufficient Stock", price=20.0, stock=10, category="A")
+        inventory.add_product(p1)
+        inventory.add_product(p2)
+        low_stock = inventory.get_low_stock_products(threshold=5)
+        assert len(low_stock) == 1
+        assert low_stock[0].id == "P001"
+
+    def test_search_by_category(self, inventory):
+        p1 = Product(id="P001", name="Gadget", price=10.0, stock=5, category="Electronics")
+        p2 = Product(id="P002", name="Widget", price=20.0, stock=5, category="electronics")
+        p3 = Product(id="P003", name="Thing", price=15.0, stock=5, category="Toys")
+        inventory.add_product(p1)
+        inventory.add_product(p2)
+        inventory.add_product(p3)
+        results = inventory.search_by_category("ELECTRONICS")
+        assert len(results) == 2
+        assert p1 in results
+        assert p2 in results
+
+    def test_remove_product(self, inventory, sample_product):
+        inventory.add_product(sample_product)
+        inventory.remove_product("P001")
+        assert inventory.get_product("P001") is None
+        with pytest.raises(KeyError):
+            inventory.get_product_or_raise("P001")
+
+    def test_remove_nonexistent_product_raises_error(self, inventory):
+        with pytest.raises(KeyError, match="Product not found"):
+            inventory.remove_product("NONEXISTENT")
 
 
 class TestInventoryListing:

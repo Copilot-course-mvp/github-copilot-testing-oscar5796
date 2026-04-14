@@ -51,10 +51,11 @@ class OrderService:
         )
         order.add_item(item)
 
-    def confirm_order(self, order: Order, customer: Customer) -> None:
+    def confirm_order(self, order: Order, customer: Customer, coupon_code: Optional[str] = None) -> None:
         """Apply pricing and confirm the order."""
-        self._pricing.price_order(order, customer)
+        self._pricing.price_order(order, customer, coupon_code)
         order.confirm()
+        order.coupon_code = coupon_code
 
     def get_order(self, order_id: str) -> Optional[Order]:
         """Retrieve an order by ID."""

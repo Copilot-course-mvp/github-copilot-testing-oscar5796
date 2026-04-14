@@ -48,6 +48,22 @@ def gold_customer():
     )
 
 
+@pytest.fixture
+def silver_customer():
+    return Customer(
+        id="C004", name="Diana", email="diana@example.com",
+        tier=CustomerTier.SILVER, total_spent=1500.0
+    )
+
+
+@pytest.fixture
+def platinum_customer():
+    return Customer(
+        id="C003", name="Charlie", email="charlie@example.com",
+        tier=CustomerTier.PLATINUM, total_spent=10000.0
+    )
+
+
 class TestHappyPathOrderFlow:
     """Tests for the standard successful order flow."""
 
@@ -120,9 +136,53 @@ class TestCancellationFlow:
         assert inventory.get_product("P003").stock == 3
         assert order.status == OrderStatus.CANCELLED
 
-    # TODO: Add test for cancelling after confirm (should still restore stock)
-    # TODO: Add test that cancelling a shipped order raises an error
-    # TODO: Add test for placing multiple orders and verifying stock correctly
+    def test_cancel_after_confirm_restores_inventory(
+        self, order_service, standard_customer, inventory
+    ):        
+        """Cancelling a confirmed order should still restore reserved stock."""
+        order = order_service.create_order(standard_customer)
+        order_service.add_item_to_order(order, "P003", 2)
+        order_service.confirm_order(order, standard_customer)
+        # Stock should be 1 now (3 - 2)
+        assert inventory.get_product("P003").stock == 1
+
+        order_service.cancel_order(order.id)
+        # Stock should be restored to 3
+        assert inventory.get_product("P003").stock == 3
+        assert order.status == OrderStatus.CANCELLED        
+
+    def test_cancel_shipped_order_raises_error(
+        self, order_service, standard_customer
+    ):
+        """Attempting to cancel a shipped order should raise an error."""
+        order = order_service.create_order(standard_customer)
+        order_service.add_item_to_order(order, "P001", 1)
+        order_service.confirm_order(order, standard_customer)
+        order_service.advance_order(order.id)  # Processing
+        order_service.advance_order(order.id)  # Shipped
+
+        with pytest.raises(ValueError):
+            order_service.cancel_order(order.id)    
+
+    def test_multiple_orders_affect_stock_correctly(
+        self, order_service, standard_customer, inventory
+    ):
+        """Placing multiple orders should correctly update stock levels."""
+        # First order for 2 units of P001
+        order1 = order_service.create_order(standard_customer)
+        order_service.add_item_to_order(order1, "P001", 2)
+        order_service.confirm_order(order1, standard_customer)
+
+        # Stock should be 48 now (50 - 2)
+        assert inventory.get_product("P001").stock == 48
+
+        # Second order for 3 units of P001
+        order2 = order_service.create_order(standard_customer)
+        order_service.add_item_to_order(order2, "P001", 3)
+        order_service.confirm_order(order2, standard_customer)
+
+        # Stock should be 45 now (48 - 3)
+        assert inventory.get_product("P001").stock == 45
 
 
 class TestEdgeCases:
@@ -148,6 +208,79 @@ class TestEdgeCases:
         with pytest.raises(ValueError):
             order_service.add_item_to_order(order2, "P003", 1)
 
-    # TODO: Add integration test combining coupon codes with tier discounts
-    # TODO: Add integration test for listing orders by customer
-    # TODO: Add integration test for listing orders by status
+    @pytest.mark.parametrize("customer_fixture,tier_percent,coupon_code,coupon_percent,expected_discount_percent", [
+        ("gold_customer", 10, "SAVE20", 20, 20),  # Coupon wins (larger)
+        ("platinum_customer", 15, "SAVE10", 10, 15),  # Tier wins (larger)
+        ("gold_customer", 10, "SAVE10", 10, 10),  # Ties at 10%
+        ("silver_customer", 5, "HALFOFF", 50, 50),  # Coupon wins (extreme)
+        ("standard_customer", 0, "SAVE10", 10, 10),  # Coupon wins (only option)
+        ("gold_customer", 10, "INVALID", 0, 10),  # Tier wins (invalid coupon)
+    ])
+    def test_coupon_and_tier_discount_combination(
+        self, order_service, request, customer_fixture, tier_percent, coupon_code, coupon_percent, expected_discount_percent
+    ):
+        """Test that the best discount (tier or coupon) is applied to orders."""
+        # Get the customer fixture dynamically
+        customer = request.getfixturevalue(customer_fixture)
+        
+        # Create order and add items for a realistic subtotal (~$160)
+        order = order_service.create_order(customer)
+        order_service.add_item_to_order(order, "P002", 2)  # 2x $80 = $160
+        
+        # Confirm order with coupon
+        order_service.confirm_order(order, customer, coupon_code)
+        
+        # Calculate expected discount
+        expected_discount = 160.0 * expected_discount_percent / 100
+        
+        # Verify discount amount
+        assert order.discount_amount == pytest.approx(expected_discount)
+        
+        # Verify total (subtotal - discount + shipping, free shipping >= $75)
+        expected_total = 160.0 - expected_discount + 0.0  # Free shipping
+        assert order.total == pytest.approx(expected_total)
+        
+        # Verify coupon code is stored
+        assert order.coupon_code == coupon_code
+
+    def test_listing_orders_by_customer(self, order_service, standard_customer):
+        """Test that we can retrieve all orders for a given customer."""
+        # Create multiple orders for the same customer
+        order1 = order_service.create_order(standard_customer)
+        order_service.add_item_to_order(order1, "P001", 1)
+        order_service.confirm_order(order1, standard_customer)
+
+        order2 = order_service.create_order(standard_customer)
+        order_service.add_item_to_order(order2, "P002", 1)
+        order_service.confirm_order(order2, standard_customer)
+
+        # Retrieve orders by customer ID
+        orders = order_service.list_orders_by_customer(standard_customer.id)
+        assert len(orders) == 2
+        assert all(order.customer_id == standard_customer.id for order in orders)
+
+    def test_listing_orders_by_status(self, order_service, standard_customer):
+        """Test that we can retrieve all orders with a given status."""
+        # Create orders with different statuses
+        order1 = order_service.create_order(standard_customer)
+        order_service.add_item_to_order(order1, "P001", 1)
+        order_service.confirm_order(order1, standard_customer)  # Confirmed
+
+        order2 = order_service.create_order(standard_customer)
+        order_service.add_item_to_order(order2, "P002", 1)
+        # Still pending
+
+        order3 = order_service.create_order(standard_customer)
+        order_service.add_item_to_order(order3, "P001", 2)
+        order_service.confirm_order(order3, standard_customer)
+        order_service.advance_order(order3.id)  # Processing
+
+        # Retrieve orders by status
+        confirmed_orders = order_service.list_orders_by_status(OrderStatus.CONFIRMED)
+        processing_orders = order_service.list_orders_by_status(OrderStatus.PROCESSING)
+
+        assert len(confirmed_orders) == 1
+        assert confirmed_orders[0].id == order1.id
+
+        assert len(processing_orders) == 1
+        assert processing_orders[0].id == order3.id
