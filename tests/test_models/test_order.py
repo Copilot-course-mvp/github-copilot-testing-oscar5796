@@ -23,8 +23,13 @@ class TestOrderItem:
         with pytest.raises(ValueError, match="Quantity must be positive"):
             OrderItem(product_id="P1", product_name="X", quantity=0, unit_price=10.0)
 
-    # TODO: Add test for negative unit_price raising ValueError
-    # TODO: Add test for subtotal with zero unit_price
+    def test_negative_unit_price_raises_error(self):
+        with pytest.raises(ValueError, match="Unit price cannot be negative"):
+            OrderItem(product_id="P1", product_name="X", quantity=1, unit_price=-5.0)
+
+    def test_subtotal_with_zero_unit_price(self):
+        item = make_item(quantity=3, unit_price=0.0)
+        assert item.subtotal == 0.0
 
 
 class TestOrderSubtotalAndTotal:
@@ -50,8 +55,16 @@ class TestOrderSubtotalAndTotal:
         order.items.append(make_item(quantity=1, unit_price=50.0))
         assert order.total == 45.0
 
-    # TODO: Add test for total never going below zero
-    # TODO: Add test for item_count summing all quantities
+    def test_total_never_negative(self):
+        order = Order(id="O001", customer_id="C001", discount_amount=100.0, shipping_cost=9.99)
+        order.items.append(make_item(quantity=1, unit_price=50.0))
+        assert order.total == 0.0
+
+    def test_item_count_sums_quantities(self):
+        order = Order(id="O001", customer_id="C001")
+        order.items.append(make_item(quantity=2))
+        order.items.append(make_item(quantity=3))
+        assert order.item_count == 5
 
 
 class TestOrderStatusTransitions:
@@ -87,7 +100,60 @@ class TestOrderStatusTransitions:
         order.advance_status()
         assert order.status == OrderStatus.PROCESSING
 
-    # TODO: Add test for advance_status from PROCESSING -> SHIPPED
-    # TODO: Add test for advance_status from SHIPPED -> DELIVERED
-    # TODO: Add test for advance_status on CANCELLED raises ValueError
-    # TODO: Add test for add_item on non-PENDING order raises ValueError
+    def test_advance_status_from_processing(self):
+        order = Order(id="O001", customer_id="C001", status=OrderStatus.PROCESSING)
+        order.advance_status()
+        assert order.status == OrderStatus.SHIPPED
+
+    def test_advance_status_from_shipped(self):
+        order = Order(id="O001", customer_id="C001", status=OrderStatus.SHIPPED)
+        order.advance_status()
+        assert order.status == OrderStatus.DELIVERED
+
+    def test_advance_status_on_cancelled_raises_error(self):
+        order = Order(id="O001", customer_id="C001", status=OrderStatus.CANCELLED)
+        with pytest.raises(ValueError, match="Cannot advance order with status: cancelled"):
+            order.advance_status()
+
+    def test_add_item_on_non_pending_order_raises_error(self):
+        order = Order(id="O001", customer_id="C001", status=OrderStatus.CONFIRMED)
+        with pytest.raises(ValueError, match="Cannot add items to an order with status: confirmed"):
+            order.add_item(make_item())
+
+    def test_confirm_non_pending_order_raises_error(self):
+        order = Order(id="O001", customer_id="C001", status=OrderStatus.CONFIRMED)
+        with pytest.raises(ValueError, match="Cannot confirm an order with status: confirmed"):
+            order.confirm()
+
+    def test_confirm_processing_order_raises_error(self):
+        order = Order(id="O001", customer_id="C001", status=OrderStatus.PROCESSING)
+        with pytest.raises(ValueError, match="Cannot confirm an order with status: processing"):
+            order.confirm()
+
+
+class TestOrderRepr:
+    """Tests for order string representation."""
+
+    def test_repr_pending_order(self):
+        order = Order(id="O001", customer_id="C001", shipping_cost=0.0)
+        order.items.append(make_item(quantity=1, unit_price=50.0))
+        repr_str = repr(order)
+        assert "O001" in repr_str
+        assert "pending" in repr_str
+        assert "50.00" in repr_str
+        assert repr_str.startswith("Order(")
+
+    def test_repr_confirmed_order_with_total(self):
+        order = Order(id="O002", customer_id="C002", status=OrderStatus.CONFIRMED, shipping_cost=5.0)
+        order.items.append(make_item(quantity=2, unit_price=25.0))
+        repr_str = repr(order)
+        assert "O002" in repr_str
+        assert "confirmed" in repr_str
+        assert "55.00" in repr_str
+
+    def test_repr_cancelled_order(self):
+        order = Order(id="O003", customer_id="C003", status=OrderStatus.CANCELLED)
+        repr_str = repr(order)
+        assert "O003" in repr_str
+        assert "cancelled" in repr_str
+        assert "0.00" in repr_str

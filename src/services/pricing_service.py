@@ -64,10 +64,10 @@ class PricingService:
         # Use the best single discount (not stacked)
         return max(customer_discount, bulk_discount, coupon_discount)
 
-    def price_order(self, order: Order, customer: Customer) -> None:
+    def price_order(self, order: Order, customer: Customer, coupon_code: Optional[str] = None) -> None:
         """Apply pricing (shipping and discount) to an order in-place."""
         subtotal = order.subtotal
         order.shipping_cost = self.calculate_shipping(subtotal)
         order.discount_amount = self.calculate_total_discount(
-            subtotal, customer, order.item_count
+            subtotal, customer, order.item_count, coupon_code
         )

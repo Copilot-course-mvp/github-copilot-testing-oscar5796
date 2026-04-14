@@ -48,6 +48,7 @@ class Order:
     shipping_cost: float = 0.0
     created_at: datetime = field(default_factory=datetime.now)
     notes: Optional[str] = None
+    coupon_code: Optional[str] = None
 
     @property
     def subtotal(self) -> float:

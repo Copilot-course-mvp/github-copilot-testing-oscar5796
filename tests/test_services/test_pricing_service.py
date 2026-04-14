@@ -36,7 +36,9 @@ class TestShippingCalculation:
     def test_shipping_cost_at_zero(self, pricing):
         assert pricing.calculate_shipping(0.0) == pytest.approx(9.99)
 
-    # TODO: Add test for negative subtotal raises ValueError
+    def test_shipping_cost_negative_subtotal_raises_error(self, pricing):
+        with pytest.raises(ValueError, match="Order subtotal cannot be negative"):
+            pricing.calculate_shipping(-10.0)
 
 
 class TestCustomerDiscount:
@@ -50,8 +52,20 @@ class TestCustomerDiscount:
         discount = pricing.calculate_customer_discount(100.0, gold_customer)
         assert discount == 10.0
 
-    # TODO: Add test for PLATINUM customer discount
-    # TODO: Add test for SILVER customer discount
+    def test_platinum_customer_gets_fifteen_percent(self, pricing):
+        platinum_customer = Customer(
+            id="C003", name="Charlie", email="charlie@example.com", tier=CustomerTier.PLATINUM
+        )
+        discount = pricing.calculate_customer_discount(100.0, platinum_customer)
+        assert discount == 15.0
+
+    def test_silver_customer_gets_five_percent(self, pricing):
+        silver_customer = Customer(
+            id="C004", name="Diana", email="diana@example.com", tier=CustomerTier.SILVER
+        )
+        discount = pricing.calculate_customer_discount(100.0, silver_customer)
+        assert discount == 5.0
+
 
 
 class TestCouponCode:
@@ -69,8 +83,11 @@ class TestCouponCode:
     def test_coupon_is_case_insensitive(self, pricing):
         assert pricing.apply_coupon(100.0, "save10") == 10.0
 
-    # TODO: Add test for WELCOME coupon (5%)
-    # TODO: Add test for SAVE20 coupon (20%)
+    def test_welcome_coupon(self, pricing):
+        assert pricing.apply_coupon(100.0, "WELCOME") == 5.0
+
+    def test_save20_coupon(self, pricing):
+        assert pricing.apply_coupon(100.0, "SAVE20") == 20.0
 
 
 class TestBulkDiscount:
@@ -79,7 +96,16 @@ class TestBulkDiscount:
     def test_no_bulk_discount_below_threshold(self, pricing):
         assert pricing.calculate_bulk_discount(100.0, 4) == 0.0
 
-    def test_bulk_discount_at_threshold(self, pricing):
-        assert pricing.calculate_bulk_discount(100.0, 5) == 10.0
+    def test_bulk_discount_above_threshold(self, pricing):
+        assert pricing.calculate_bulk_discount(100.0, 10) == 10.0
 
-    # TODO: Add test for bulk discount above threshold (e.g., 10 items)
+    def test_bulk_discount_with_negative_item_count_raises_error(self, pricing):
+        with pytest.raises(ValueError, match="Item count cannot be negative"):
+            pricing.calculate_bulk_discount(100.0, -1)
+
+    def test_customer_discount_with_negative_subtotal_raises_error(self, pricing, standard_customer):
+        with pytest.raises(ValueError, match="Subtotal cannot be negative"):
+            pricing.calculate_customer_discount(-100.0, standard_customer)
+
+    def test_bulk_discount_above_threshold(self, pricing):
+        assert pricing.calculate_bulk_discount(100.0, 10) == 10.0
